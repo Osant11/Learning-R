@@ -1,7 +1,25 @@
 # Basic Calculator Shiny App
-# Learn: numericInput, selectInput, actionButton, reactivity
+# Learn: numericInput, selectInput, actionButton, reactivity, updateSelectInput
 
 library(shiny)
+
+# Define operation choices
+basic_ops <- c(
+  "Add (+)" = "add",
+  "Subtract (-)" = "subtract",
+  "Multiply (*)" = "multiply",
+  "Divide (/)" = "divide"
+)
+
+advanced_ops <- c(
+  "Add (+)" = "add",
+  "Subtract (-)" = "subtract",
+  "Multiply (*)" = "multiply",
+  "Divide (/)" = "divide",
+  "Power (^)" = "power",
+  "Modulo (%%)" = "modulo",
+  "Integer Divide (%/%)" = "intdiv"
+)
 
 # UI - User Interface
 ui <- fluidPage(
@@ -15,6 +33,15 @@ ui <- fluidPage(
     # Sidebar panel for inputs
     sidebarPanel(
 
+      # Advanced mode checkbox
+      checkboxInput(
+        inputId = "advanced_mode",
+        label = "Advanced Mode",
+        value = FALSE
+      ),
+
+      hr(),
+
       # First number input
       numericInput(
         inputId = "num1",
@@ -26,12 +53,7 @@ ui <- fluidPage(
       selectInput(
         inputId = "operation",
         label = "Operation:",
-        choices = c(
-          "Add (+)" = "add",
-          "Subtract (-)" = "subtract",
-          "Multiply (*)" = "multiply",
-          "Divide (/)" = "divide"
-        )
+        choices = basic_ops
       ),
 
       # Second number input
@@ -63,10 +85,31 @@ ui <- fluidPage(
 )
 
 # Server - Logic
-server <- function(input, output) {
+server <- function(input, output, session) {
 
   # Store calculation history
   history <- reactiveVal("")
+
+  # Update selectInput when advanced mode changes
+  observeEvent(input$advanced_mode, {
+    if (input$advanced_mode) {
+      # Show advanced operations
+      updateSelectInput(
+        session = session,
+        inputId = "operation",
+        label = "Operation (Advanced):",
+        choices = advanced_ops
+      )
+    } else {
+      # Show basic operations
+      updateSelectInput(
+        session = session,
+        inputId = "operation",
+        label = "Operation:",
+        choices = basic_ops
+      )
+    }
+  })
 
   # Perform calculation when button is clicked
   result <- eventReactive(input$calculate, {
@@ -80,7 +123,10 @@ server <- function(input, output) {
       "add" = num1 + num2,
       "subtract" = num1 - num2,
       "multiply" = num1 * num2,
-      "divide" = if (num2 != 0) num1 / num2 else "Error: Division by zero!"
+      "divide" = if (num2 != 0) num1 / num2 else "Error: Division by zero!",
+      "power" = num1 ^ num2,
+      "modulo" = if (num2 != 0) num1 %% num2 else "Error: Division by zero!",
+      "intdiv" = if (num2 != 0) num1 %/% num2 else "Error: Division by zero!"
     )
 
     # Get operation symbol
@@ -88,7 +134,10 @@ server <- function(input, output) {
       "add" = "+",
       "subtract" = "-",
       "multiply" = "*",
-      "divide" = "/"
+      "divide" = "/",
+      "power" = "^",
+      "modulo" = "%%",
+      "intdiv" = "%/%"
     )
 
     # Create result text
