@@ -32,121 +32,120 @@ base_data <- mtcars %>%
     gear = factor(gear)
   )
 
-# Define filter configurations
-numeric_vars <- list(
-  mpg = list(label = "MPG", min = floor(min(base_data$mpg)), max = ceiling(max(base_data$mpg))),
-  hp = list(label = "Horsepower", min = floor(min(base_data$hp)), max = ceiling(max(base_data$hp))),
-  wt = list(label = "Weight (1000 lbs)", min = floor(min(base_data$wt) * 10) / 10, max = ceiling(max(base_data$wt) * 10) / 10),
-  disp = list(label = "Displacement", min = floor(min(base_data$disp)), max = ceiling(max(base_data$disp))),
-  drat = list(label = "Rear Axle Ratio", min = floor(min(base_data$drat) * 10) / 10, max = ceiling(max(base_data$drat) * 10) / 10),
-  qsec = list(label = "1/4 Mile Time", min = floor(min(base_data$qsec)), max = ceiling(max(base_data$qsec)))
+# Define all available filter variables with their configurations
+filter_config <- list(
+  # Categorical variables
+  cyl = list(
+    label = "Cylinders",
+    type = "categorical",
+    choices = levels(base_data$cyl)
+  ),
+  gear = list(
+    label = "Gears",
+    type = "categorical",
+    choices = levels(base_data$gear)
+  ),
+ am = list(
+    label = "Transmission",
+    type = "categorical",
+    choices = levels(base_data$am)
+  ),
+  # Numeric variables
+  mpg = list(
+    label = "MPG",
+    type = "numeric",
+    min = floor(min(base_data$mpg)),
+    max = ceiling(max(base_data$mpg)),
+    step = 0.5
+  ),
+  hp = list(
+    label = "Horsepower",
+    type = "numeric",
+    min = floor(min(base_data$hp)),
+    max = ceiling(max(base_data$hp)),
+    step = 5
+  ),
+  wt = list(
+    label = "Weight (1000 lbs)",
+    type = "numeric",
+    min = floor(min(base_data$wt) * 10) / 10,
+    max = ceiling(max(base_data$wt) * 10) / 10,
+    step = 0.1
+  ),
+  disp = list(
+    label = "Displacement",
+    type = "numeric",
+    min = floor(min(base_data$disp)),
+    max = ceiling(max(base_data$disp)),
+    step = 10
+  ),
+  qsec = list(
+    label = "1/4 Mile Time",
+    type = "numeric",
+    min = floor(min(base_data$qsec)),
+    max = ceiling(max(base_data$qsec)),
+    step = 0.5
+  ),
+  drat = list(
+    label = "Rear Axle Ratio",
+    type = "numeric",
+    min = floor(min(base_data$drat) * 10) / 10,
+    max = ceiling(max(base_data$drat) * 10) / 10,
+    step = 0.1
+  )
 )
 
-categorical_vars <- list(
-  cyl = list(label = "Cylinders", choices = levels(base_data$cyl)),
-  gear = list(label = "Gears", choices = levels(base_data$gear)),
-  am = list(label = "Transmission", choices = levels(base_data$am))
+# Get choices for filter dropdown
+filter_choices <- setNames(
+  names(filter_config),
+  sapply(filter_config, function(x) x$label)
 )
 
-# Create sidebar filters UI
-sidebar_filters <- sidebar(
+# Create sidebar with dynamic filter widget
+sidebar_content <- sidebar(
   title = "Data Filters",
-  width = 300,
+  width = 320,
 
-  # Filter status
+  # Dynamic Filter Widget
   card(
+    card_header(
+      class = "d-flex justify-content-between align-items-center py-2",
+      span(icon("filter"), "Active Filters"),
+      div(
+        actionButton("add_filter", "",
+                    icon = icon("plus"),
+                    class = "btn-sm btn-success"),
+        actionButton("clear_all_filters", "",
+                    icon = icon("trash"),
+                    class = "btn-sm btn-outline-danger ms-1",
+                    title = "Clear all filters")
+      )
+    ),
     card_body(
       class = "p-2",
+      # Filter count status
       div(
-        class = "d-flex justify-content-between align-items-center",
-        span(
-          icon("filter"),
-          textOutput("filter_status", inline = TRUE)
-        ),
-        actionButton("reset_filters", "Reset All",
-                    class = "btn-sm btn-outline-danger",
-                    icon = icon("xmark"))
-      )
+        class = "mb-2 text-muted small",
+        textOutput("filter_count_text", inline = TRUE)
+      ),
+
+      # Container for dynamically added filters
+      div(id = "filter_container",
+        uiOutput("dynamic_filters")
+      ),
+
+      # Placeholder when no filters
+      uiOutput("no_filters_message")
     )
   ),
 
   hr(),
 
-  # Categorical filters
-  h6(icon("tags"), "Categorical Filters", class = "text-muted"),
-
-  selectInput(
-    "filter_cyl",
-    "Cylinders:",
-    choices = categorical_vars$cyl$choices,
-    selected = categorical_vars$cyl$choices,
-    multiple = TRUE
-  ),
-
-  selectInput(
-    "filter_gear",
-    "Gears:",
-    choices = categorical_vars$gear$choices,
-    selected = categorical_vars$gear$choices,
-    multiple = TRUE
-  ),
-
-  selectInput(
-    "filter_am",
-    "Transmission:",
-    choices = categorical_vars$am$choices,
-    selected = categorical_vars$am$choices,
-    multiple = TRUE
-  ),
-
-  hr(),
-
-  # Numeric filters
-  h6(icon("sliders"), "Numeric Filters", class = "text-muted"),
-
-  sliderInput(
-    "filter_mpg",
-    "MPG:",
-    min = numeric_vars$mpg$min,
-    max = numeric_vars$mpg$max,
-    value = c(numeric_vars$mpg$min, numeric_vars$mpg$max),
-    step = 0.5
-  ),
-
-  sliderInput(
-    "filter_hp",
-    "Horsepower:",
-    min = numeric_vars$hp$min,
-    max = numeric_vars$hp$max,
-    value = c(numeric_vars$hp$min, numeric_vars$hp$max),
-    step = 5
-  ),
-
-  sliderInput(
-    "filter_wt",
-    "Weight (1000 lbs):",
-    min = numeric_vars$wt$min,
-    max = numeric_vars$wt$max,
-    value = c(numeric_vars$wt$min, numeric_vars$wt$max),
-    step = 0.1
-  ),
-
-  sliderInput(
-    "filter_disp",
-    "Displacement:",
-    min = numeric_vars$disp$min,
-    max = numeric_vars$disp$max,
-    value = c(numeric_vars$disp$min, numeric_vars$disp$max),
-    step = 10
-  ),
-
-  sliderInput(
-    "filter_qsec",
-    "1/4 Mile Time:",
-    min = numeric_vars$qsec$min,
-    max = numeric_vars$qsec$max,
-    value = c(numeric_vars$qsec$min, numeric_vars$qsec$max),
-    step = 0.5
+  # Add filter modal trigger info
+  div(
+    class = "text-muted small text-center",
+    icon("info-circle"),
+    "Click", icon("plus", class = "text-success"), "to add a filter"
   )
 )
 
@@ -156,13 +155,12 @@ ui <- page_navbar(
   fillable = TRUE,
 
   # Page principale with sidebar
-
-nav_panel(
+  nav_panel(
     title = "Dashboard",
     icon = icon("chart-line"),
 
     layout_sidebar(
-      sidebar = sidebar_filters,
+      sidebar = sidebar_content,
 
       # Main content
       layout_columns(
@@ -312,26 +310,24 @@ nav_panel(
 
 This Shiny dashboard demonstrates:
 
-- **Dynamic filtering** with sliders and select inputs
+- **Dynamic filtering widget** - Add/remove filters on demand
 - **Interactive selection** with Plotly
 - **Reactive tables** with DT
 - **Modern UI** with bslib
 - **Value boxes** for key metrics
-- **Customizable visualizations**
 
 #### How to use:
 
-1. Use the sidebar filters to narrow down the data
-2. Select points on the scatter plot using click-and-drag
-3. Use lasso mode for free-form selection
-4. View selected data in the table
-5. Adjust variables and colors in the controls panel
+1. Click the **+** button in the sidebar to add filters
+2. Choose a variable and set filter values
+3. Add multiple filters - they work cumulatively
+4. Remove individual filters with the **x** button
+5. Select points on the scatter plot for detailed view
 
-#### Filtering:
+#### Filter Types:
 
-- **Categorical filters**: Select one or more categories to include
-- **Numeric filters**: Adjust sliders to set min/max ranges
-- All filters are cumulative and work together
+- **Categorical**: Multi-select dropdown (Cylinders, Gears, Transmission)
+- **Numeric**: Range slider (MPG, HP, Weight, etc.)
 
 #### Data:
 
@@ -355,157 +351,273 @@ Built with the `mtcars` dataset from base R.
 
 server <- function(input, output, session) {
 
-  # Reset all filters
-  observeEvent(input$reset_filters, {
-    # Reset categorical filters
-    updateSelectInput(session, "filter_cyl", selected = categorical_vars$cyl$choices)
-    updateSelectInput(session, "filter_gear", selected = categorical_vars$gear$choices)
-    updateSelectInput(session, "filter_am", selected = categorical_vars$am$choices)
+  # Reactive values to store active filters
+  rv <- reactiveValues(
+    filters = list(),        # List of active filter configurations
+    filter_counter = 0       # Counter for unique filter IDs
+  )
 
-    # Reset numeric filters
-    updateSliderInput(session, "filter_mpg", value = c(numeric_vars$mpg$min, numeric_vars$mpg$max))
-    updateSliderInput(session, "filter_hp", value = c(numeric_vars$hp$min, numeric_vars$hp$max))
-    updateSliderInput(session, "filter_wt", value = c(numeric_vars$wt$min, numeric_vars$wt$max))
-    updateSliderInput(session, "filter_disp", value = c(numeric_vars$disp$min, numeric_vars$disp$max))
-    updateSliderInput(session, "filter_qsec", value = c(numeric_vars$qsec$min, numeric_vars$qsec$max))
+  # Show modal to add new filter
+  observeEvent(input$add_filter, {
+    # Get variables that are not already filtered
+    used_vars <- sapply(rv$filters, function(f) f$variable)
+    available_choices <- filter_choices[!filter_choices %in% used_vars]
+
+    if (length(available_choices) == 0) {
+      showNotification("All variables are already being filtered.",
+                      type = "warning")
+      return()
+    }
+
+    showModal(modalDialog(
+      title = "Add New Filter",
+      size = "s",
+
+      selectInput(
+        "new_filter_var",
+        "Select Variable:",
+        choices = available_choices
+      ),
+
+      # Dynamic filter value input will be rendered here
+      uiOutput("new_filter_value_ui"),
+
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("confirm_add_filter", "Add Filter",
+                    class = "btn-primary")
+      )
+    ))
   })
 
-  # Reactive filtered data based on all filters
+  # Render appropriate input based on selected variable in modal
+  output$new_filter_value_ui <- renderUI({
+    req(input$new_filter_var)
+
+    var_name <- input$new_filter_var
+    config <- filter_config[[var_name]]
+
+    if (config$type == "categorical") {
+      selectInput(
+        "new_filter_value",
+        paste("Select", config$label, ":"),
+        choices = config$choices,
+        selected = config$choices,
+        multiple = TRUE
+      )
+    } else {
+      sliderInput(
+        "new_filter_value",
+        paste("Select", config$label, "Range:"),
+        min = config$min,
+        max = config$max,
+        value = c(config$min, config$max),
+        step = config$step
+      )
+    }
+  })
+
+  # Confirm adding new filter
+  observeEvent(input$confirm_add_filter, {
+    req(input$new_filter_var, input$new_filter_value)
+
+    var_name <- input$new_filter_var
+    config <- filter_config[[var_name]]
+
+    # Increment counter for unique ID
+    rv$filter_counter <- rv$filter_counter + 1
+    filter_id <- paste0("filter_", rv$filter_counter)
+
+    # Add new filter to the list
+    rv$filters[[filter_id]] <- list(
+      id = filter_id,
+      variable = var_name,
+      label = config$label,
+      type = config$type,
+      value = input$new_filter_value,
+      config = config
+    )
+
+    removeModal()
+  })
+
+  # Remove individual filter
+  observeEvent(input$remove_filter, {
+    filter_id <- input$remove_filter
+    rv$filters[[filter_id]] <- NULL
+  })
+
+  # Clear all filters
+  observeEvent(input$clear_all_filters, {
+    rv$filters <- list()
+  })
+
+  # Render dynamic filters in sidebar
+  output$dynamic_filters <- renderUI({
+    filters <- rv$filters
+
+    if (length(filters) == 0) {
+      return(NULL)
+    }
+
+    filter_ui_list <- lapply(names(filters), function(filter_id) {
+      f <- filters[[filter_id]]
+
+      # Create the filter value input
+      if (f$type == "categorical") {
+        value_input <- selectInput(
+          inputId = paste0(filter_id, "_value"),
+          label = NULL,
+          choices = f$config$choices,
+          selected = f$value,
+          multiple = TRUE,
+          width = "100%"
+        )
+      } else {
+        value_input <- sliderInput(
+          inputId = paste0(filter_id, "_value"),
+          label = NULL,
+          min = f$config$min,
+          max = f$config$max,
+          value = f$value,
+          step = f$config$step,
+          width = "100%"
+        )
+      }
+
+      # Filter card with remove button
+      div(
+        class = "card mb-2",
+        div(
+          class = "card-header py-1 px-2 d-flex justify-content-between align-items-center",
+          style = "background-color: #f8f9fa;",
+          span(
+            class = "small fw-bold",
+            if (f$type == "categorical") icon("tags", class = "text-primary me-1")
+            else icon("sliders", class = "text-info me-1"),
+            f$label
+          ),
+          tags$button(
+            type = "button",
+            class = "btn btn-sm btn-link text-danger p-0",
+            onclick = sprintf("Shiny.setInputValue('remove_filter', '%s', {priority: 'event'})", filter_id),
+            icon("xmark")
+          )
+        ),
+        div(
+          class = "card-body py-2 px-2",
+          value_input
+        )
+      )
+    })
+
+    tagList(filter_ui_list)
+  })
+
+  # Show message when no filters
+  output$no_filters_message <- renderUI({
+    if (length(rv$filters) == 0) {
+      div(
+        class = "text-center text-muted py-3",
+        icon("filter", class = "fa-2x mb-2 d-block mx-auto", style = "opacity: 0.3;"),
+        p(class = "small mb-0", "No active filters"),
+        p(class = "small text-muted", "Click + to add one")
+      )
+    }
+  })
+
+  # Filter count text
+  output$filter_count_text <- renderText({
+    n <- length(rv$filters)
+    if (n == 0) {
+      "No filters active"
+    } else {
+      paste(n, "filter(s) active")
+    }
+  })
+
+  # Update filter values when user changes them
+  observe({
+    filters <- rv$filters
+
+    for (filter_id in names(filters)) {
+      input_id <- paste0(filter_id, "_value")
+      new_value <- input[[input_id]]
+
+      if (!is.null(new_value)) {
+        # Update the stored value
+        rv$filters[[filter_id]]$value <- new_value
+      }
+    }
+  })
+
+  # Reactive filtered data based on all active filters
   filtered_data <- reactive({
     data <- base_data
+    filters <- rv$filters
 
-    # Apply categorical filters
-    if (!is.null(input$filter_cyl) && length(input$filter_cyl) > 0) {
-      data <- data %>% filter(cyl %in% input$filter_cyl)
-    }
+    for (f in filters) {
+      var_name <- f$variable
+      value <- f$value
 
-    if (!is.null(input$filter_gear) && length(input$filter_gear) > 0) {
-      data <- data %>% filter(gear %in% input$filter_gear)
-    }
-
-    if (!is.null(input$filter_am) && length(input$filter_am) > 0) {
-      data <- data %>% filter(am %in% input$filter_am)
-    }
-
-    # Apply numeric filters
-    if (!is.null(input$filter_mpg)) {
-      data <- data %>% filter(mpg >= input$filter_mpg[1] & mpg <= input$filter_mpg[2])
-    }
-
-    if (!is.null(input$filter_hp)) {
-      data <- data %>% filter(hp >= input$filter_hp[1] & hp <= input$filter_hp[2])
-    }
-
-    if (!is.null(input$filter_wt)) {
-      data <- data %>% filter(wt >= input$filter_wt[1] & wt <= input$filter_wt[2])
-    }
-
-    if (!is.null(input$filter_disp)) {
-      data <- data %>% filter(disp >= input$filter_disp[1] & disp <= input$filter_disp[2])
-    }
-
-    if (!is.null(input$filter_qsec)) {
-      data <- data %>% filter(qsec >= input$filter_qsec[1] & qsec <= input$filter_qsec[2])
+      if (f$type == "categorical") {
+        if (length(value) > 0) {
+          data <- data %>% filter(!!sym(var_name) %in% value)
+        }
+      } else {
+        # Numeric filter with range
+        if (length(value) == 2) {
+          data <- data %>% filter(!!sym(var_name) >= value[1] & !!sym(var_name) <= value[2])
+        }
+      }
     }
 
     data
   })
 
-  # Count active filters
-  active_filter_count <- reactive({
-    count <- 0
-
-    # Check categorical filters
-    if (length(input$filter_cyl) < length(categorical_vars$cyl$choices)) count <- count + 1
-    if (length(input$filter_gear) < length(categorical_vars$gear$choices)) count <- count + 1
-    if (length(input$filter_am) < length(categorical_vars$am$choices)) count <- count + 1
-
-    # Check numeric filters
-    if (!is.null(input$filter_mpg) &&
-        (input$filter_mpg[1] > numeric_vars$mpg$min || input$filter_mpg[2] < numeric_vars$mpg$max)) count <- count + 1
-    if (!is.null(input$filter_hp) &&
-        (input$filter_hp[1] > numeric_vars$hp$min || input$filter_hp[2] < numeric_vars$hp$max)) count <- count + 1
-    if (!is.null(input$filter_wt) &&
-        (input$filter_wt[1] > numeric_vars$wt$min || input$filter_wt[2] < numeric_vars$wt$max)) count <- count + 1
-    if (!is.null(input$filter_disp) &&
-        (input$filter_disp[1] > numeric_vars$disp$min || input$filter_disp[2] < numeric_vars$disp$max)) count <- count + 1
-    if (!is.null(input$filter_qsec) &&
-        (input$filter_qsec[1] > numeric_vars$qsec$min || input$filter_qsec[2] < numeric_vars$qsec$max)) count <- count + 1
-
-    count
-  })
-
-  # Filter status text
-  output$filter_status <- renderText({
-    count <- active_filter_count()
-    if (count == 0) {
-      "No filters active"
-    } else {
-      paste(count, "filter(s) active")
-    }
-  })
-
-  # Active filters display
+  # Active filters display (badges in main content)
   output$active_filters_display <- renderUI({
-    filters <- list()
-
-    # Check categorical filters
-    if (length(input$filter_cyl) < length(categorical_vars$cyl$choices) && length(input$filter_cyl) > 0) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-primary me-1", paste("Cyl:", paste(input$filter_cyl, collapse = ", ")))
-      ))
-    }
-    if (length(input$filter_gear) < length(categorical_vars$gear$choices) && length(input$filter_gear) > 0) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-primary me-1", paste("Gears:", paste(input$filter_gear, collapse = ", ")))
-      ))
-    }
-    if (length(input$filter_am) < length(categorical_vars$am$choices) && length(input$filter_am) > 0) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-primary me-1", paste("Trans:", paste(input$filter_am, collapse = ", ")))
-      ))
-    }
-
-    # Check numeric filters
-    if (!is.null(input$filter_mpg) &&
-        (input$filter_mpg[1] > numeric_vars$mpg$min || input$filter_mpg[2] < numeric_vars$mpg$max)) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-info me-1", paste0("MPG: ", input$filter_mpg[1], "-", input$filter_mpg[2]))
-      ))
-    }
-    if (!is.null(input$filter_hp) &&
-        (input$filter_hp[1] > numeric_vars$hp$min || input$filter_hp[2] < numeric_vars$hp$max)) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-info me-1", paste0("HP: ", input$filter_hp[1], "-", input$filter_hp[2]))
-      ))
-    }
-    if (!is.null(input$filter_wt) &&
-        (input$filter_wt[1] > numeric_vars$wt$min || input$filter_wt[2] < numeric_vars$wt$max)) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-info me-1", paste0("Weight: ", input$filter_wt[1], "-", input$filter_wt[2]))
-      ))
-    }
-    if (!is.null(input$filter_disp) &&
-        (input$filter_disp[1] > numeric_vars$disp$min || input$filter_disp[2] < numeric_vars$disp$max)) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-info me-1", paste0("Disp: ", input$filter_disp[1], "-", input$filter_disp[2]))
-      ))
-    }
-    if (!is.null(input$filter_qsec) &&
-        (input$filter_qsec[1] > numeric_vars$qsec$min || input$filter_qsec[2] < numeric_vars$qsec$max)) {
-      filters <- c(filters, list(
-        tags$span(class = "badge bg-info me-1", paste0("qsec: ", input$filter_qsec[1], "-", input$filter_qsec[2]))
-      ))
-    }
+    filters <- rv$filters
 
     if (length(filters) == 0) {
-      tags$span(class = "text-muted", icon("info-circle"), " Use sidebar filters to narrow down data")
-    } else {
-      div(
-        tags$span(class = "text-muted me-2", "Active filters:"),
-        filters
-      )
+      return(tags$span(class = "text-muted",
+                      icon("info-circle"),
+                      " Use sidebar to add filters"))
     }
+
+    badges <- lapply(filters, function(f) {
+      if (f$type == "categorical") {
+        # Check if not all selected
+        if (length(f$value) < length(f$config$choices) && length(f$value) > 0) {
+          tags$span(
+            class = "badge bg-primary me-1 mb-1",
+            paste(f$label, ":", paste(f$value, collapse = ", "))
+          )
+        }
+      } else {
+        # Check if range is modified
+        if (f$value[1] > f$config$min || f$value[2] < f$config$max) {
+          tags$span(
+            class = "badge bg-info me-1 mb-1",
+            paste0(f$label, ": ", f$value[1], " - ", f$value[2])
+          )
+        }
+      }
+    })
+
+    # Remove NULL badges
+    badges <- Filter(Negate(is.null), badges)
+
+    if (length(badges) == 0) {
+      return(tags$span(class = "text-muted",
+                      icon("check-circle", class = "text-success"),
+                      " Filters added but showing all data (no restrictions)"))
+    }
+
+    div(
+      tags$span(class = "text-muted me-2", "Active filters:"),
+      badges
+    )
   })
 
   # Variable réactive pour reset selection
@@ -588,7 +700,6 @@ server <- function(input, output, session) {
     if (is.null(s) || nrow(data) == 0) return(data.frame())
 
     selected_indices <- s$pointNumber + 1
-    # Make sure indices are valid
     valid_indices <- selected_indices[selected_indices <= nrow(data)]
     if (length(valid_indices) == 0) return(data.frame())
 
@@ -617,7 +728,7 @@ server <- function(input, output, session) {
       formatRound(columns = c('mpg', 'hp', 'wt'), digits = 1)
   })
 
-  # Value boxes - now use filtered_data
+  # Value boxes
   output$total_cars <- renderText({
     paste0(nrow(filtered_data()), " / ", nrow(base_data))
   })
@@ -654,7 +765,7 @@ server <- function(input, output, session) {
     }
   })
 
-  # Statistiques - now use filtered_data
+  # Statistiques
   output$stats <- renderPrint({
     df <- selected_data()
     data <- filtered_data()
@@ -667,7 +778,7 @@ server <- function(input, output, session) {
     if (nrow(df) == 0) {
       cat("Filtered Data Summary\n")
       cat("====================\n\n")
-      cat("Total cars (filtered):", nrow(data), "\n\n")
+      cat("Total cars (filtered):", nrow(data), "/", nrow(base_data), "\n\n")
 
       cat("MPG Statistics:\n")
       cat("  Min:", min(data$mpg), "\n")
