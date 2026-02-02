@@ -113,7 +113,7 @@ ui <- page_navbar(
         # Data table
         card(
           full_screen = TRUE,
-          card_header("Selected Data"),
+          card_header(uiOutput("table_header")),
           card_body(
             DTOutput("data_table")
           )
@@ -352,10 +352,18 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------------
 
   output$data_table <- renderDT({
-    df <- selected_data()
+    selected <- selected_data()
+    all_data <- filtered_data()
+
+    # Use selected data if available, otherwise show all filtered data
+    if (nrow(selected) > 0) {
+      df <- selected
+    } else {
+      df <- all_data
+    }
 
     if (nrow(df) == 0) {
-      return(data.frame(Message = "Select points on the chart to view details"))
+      return(data.frame(Message = "No data matches current filters"))
     }
 
     datatable(
@@ -370,6 +378,24 @@ server <- function(input, output, session) {
       class = 'cell-border stripe hover'
     ) %>%
       formatRound(columns = c('mpg', 'hp', 'wt'), digits = 1)
+  })
+
+  # Dynamic table header
+  output$table_header <- renderUI({
+    selected <- selected_data()
+    all_data <- filtered_data()
+
+    if (nrow(selected) > 0) {
+      div(
+        icon("hand-pointer", class = "text-success me-2"),
+        paste0("Selected Data (", nrow(selected), " rows)")
+      )
+    } else {
+      div(
+        icon("table", class = "text-primary me-2"),
+        paste0("All Data (", nrow(all_data), " rows)")
+      )
+    }
   })
 
   # ---------------------------------------------------------------------------
