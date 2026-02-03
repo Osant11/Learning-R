@@ -31,6 +31,39 @@ ui <- page_navbar(
   theme = app_theme,
   fillable = TRUE,
 
+  # JavaScript for dynamic row highlighting
+  header = tags$head(
+    tags$script(HTML("
+      // Handler to update table row highlighting based on plot selection
+      Shiny.addCustomMessageHandler('updateTableHighlight', function(message) {
+        var selectedCars = message.selectedCars;
+        var carColIndex = message.carColIndex;
+
+        // Remove existing highlights
+        $('#data_table tbody tr').removeClass('selected-row').css('background-color', '');
+
+        // If no selection or car column not visible, return
+        if (!selectedCars || selectedCars.length === 0 || carColIndex < 0) {
+          return;
+        }
+
+        // Add highlights to selected rows
+        $('#data_table tbody tr').each(function() {
+          var row = $(this);
+          var carName = row.find('td').eq(carColIndex).text();
+          if (selectedCars.indexOf(carName) > -1) {
+            row.addClass('selected-row').css('background-color', '#d4edda');
+          }
+        });
+      });
+
+      // Initialize handler (placeholder for any setup needed)
+      Shiny.addCustomMessageHandler('initTableHighlight', function(message) {
+        // Initialization complete
+      });
+    "))
+  ),
+
   # ---------------------------------------------------------------------------
   # Dashboard Page
   # ---------------------------------------------------------------------------
@@ -472,7 +505,6 @@ server <- function(input, output, session) {
 
   output$data_table <- renderDT({
     data <- sidebar_filtered_data()
-    selected <- selected_cars()
     cols <- table_display_columns()
 
     if (nrow(data) == 0) {
@@ -506,27 +538,10 @@ server <- function(input, output, session) {
         autoWidth = TRUE,
         columnDefs = list(
           list(width = '120px', targets = "_all")
-        ),
-        # Highlight selected rows
-        rowCallback = if (car_col_index >= 0) {
-          JS(
-            sprintf(
-              "function(row, data) {
-                var selectedCars = %s;
-                var carColIndex = %d;
-                if (selectedCars.indexOf(data[carColIndex]) > -1) {
-                  $(row).addClass('selected-row');
-                  $(row).css('background-color', '#d4edda');
-                }
-              }",
-              jsonlite::toJSON(selected),
-              car_col_index
-            )
-          )
-        } else NULL
+        )
       ),
       rownames = FALSE,
-      class = 'cell-border stripe hover nowrap'  # nowrap helps with horizontal scroll
+      class = 'cell-border stripe hover nowrap'
     )
 
     # Format numeric columns if they exist
@@ -535,6 +550,25 @@ server <- function(input, output, session) {
     }
 
     dt
+  }, server = TRUE)  # Use server-side processing
+
+  # Update row highlighting when selection changes
+  observe({
+    selected <- selected_cars()
+    cols <- table_display_columns()
+    car_col_index <- if ("car" %in% cols) which(c("car", setdiff(cols, "car")) == "car") - 1 else -1
+
+    # Send selection to JavaScript to update highlighting
+    session$sendCustomMessage("updateTableHighlight", list(
+      selectedCars = selected,
+      carColIndex = car_col_index
+    ))
+  })
+
+  # Add JavaScript handler for updating table row highlighting
+  observe({
+    # Only run once to add the JS handler
+    session$sendCustomMessage("initTableHighlight", list())
   })
 
   # Dynamic table header
