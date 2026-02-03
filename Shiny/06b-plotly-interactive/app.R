@@ -31,72 +31,16 @@ ui <- page_navbar(
   theme = app_theme,
   fillable = TRUE,
 
-  # JavaScript for dynamic row highlighting
+  # Custom styles for selected rows
   header = tags$head(
     tags$style(HTML("
-      .selected-row-highlight {
+      /* Style for DT selected rows */
+      table.dataTable tbody tr.selected {
         background-color: #d4edda !important;
       }
-    ")),
-    tags$script(HTML("
-      // Store selected cars globally for use in drawCallback
-      var globalSelectedCars = [];
-      var globalCarColIndex = -1;
-
-      // Function to apply highlighting to visible rows
-      function applyHighlighting() {
-        // Try multiple selectors to find the table
-        var tableSelectors = [
-          '#data_table table tbody tr',
-          '#data_table tbody tr',
-          '.dataTable tbody tr'
-        ];
-
-        var rows = $();
-        for (var i = 0; i < tableSelectors.length; i++) {
-          rows = $(tableSelectors[i]);
-          if (rows.length > 0) break;
-        }
-
-        // Remove existing highlights
-        rows.removeClass('selected-row-highlight');
-
-        // If no selection or car column not visible, return
-        if (!globalSelectedCars || globalSelectedCars.length === 0 || globalCarColIndex < 0) {
-          return;
-        }
-
-        // Add highlights to selected rows
-        rows.each(function() {
-          var row = $(this);
-          var cells = row.find('td');
-          if (cells.length > globalCarColIndex) {
-            var carName = cells.eq(globalCarColIndex).text().trim();
-            if (globalSelectedCars.indexOf(carName) > -1) {
-              row.addClass('selected-row-highlight');
-            }
-          }
-        });
+      table.dataTable tbody tr.selected:hover {
+        background-color: #c3e6cb !important;
       }
-
-      // Handler to update table row highlighting based on plot selection
-      Shiny.addCustomMessageHandler('updateTableHighlight', function(message) {
-        globalSelectedCars = message.selectedCars || [];
-        globalCarColIndex = message.carColIndex;
-
-        // Apply highlighting with a small delay to ensure table is rendered
-        setTimeout(applyHighlighting, 100);
-      });
-
-      // Re-apply highlighting when table is redrawn (pagination, filtering, etc.)
-      $(document).on('draw.dt', function() {
-        setTimeout(applyHighlighting, 50);
-      });
-
-      // Initialize handler
-      Shiny.addCustomMessageHandler('initTableHighlight', function(message) {
-        // Initialization complete
-      });
     "))
   ),
 
@@ -542,8 +486,6 @@ server <- function(input, output, session) {
   output$data_table <- renderDT({
     data <- sidebar_filtered_data()
     cols <- table_display_columns()
-    # Include selected_cars as dependency to force re-render on selection change
-    selected <- selected_cars()
 
     if (nrow(data) == 0) {
       return(datatable(data.frame(Message = "No data matches current filters")))
@@ -560,30 +502,11 @@ server <- function(input, output, session) {
     # Determine which numeric columns to format
     numeric_cols_to_round <- intersect(cols, c("mpg", "hp", "wt", "drat", "qsec"))
 
-    # Find car column index for row callback (0-based for JS)
-    car_col_index <- if ("car" %in% cols) which(cols == "car") - 1 else -1
-
-    # Build rowCallback for highlighting selected rows
-    row_callback <- NULL
-    if (car_col_index >= 0 && length(selected) > 0) {
-      row_callback <- JS(sprintf(
-        "function(row, data, displayNum, displayIndex, dataIndex) {
-          var selectedCars = %s;
-          var carColIndex = %d;
-          var carName = data[carColIndex];
-          if (selectedCars.indexOf(carName) > -1) {
-            $(row).css('background-color', '#d4edda');
-          }
-        }",
-        jsonlite::toJSON(selected),
-        car_col_index
-      ))
-    }
-
-    # Create datatable with column filters and horizontal scroll
+    # Create datatable with column filters, horizontal scroll, and row selection
     dt <- datatable(
       display_df,
       filter = 'top',  # Enable column filters at top
+      selection = 'multiple',  # Enable multiple row selection for highlighting
       options = list(
         pageLength = 15,
         dom = 'tip',
@@ -593,8 +516,7 @@ server <- function(input, output, session) {
         autoWidth = TRUE,
         columnDefs = list(
           list(width = '120px', targets = "_all")
-        ),
-        rowCallback = row_callback
+        )
       ),
       rownames = FALSE,
       class = 'cell-border stripe hover nowrap'
@@ -606,7 +528,7 @@ server <- function(input, output, session) {
     }
 
     dt
-  }, server = FALSE)  # Client-side processing for faster re-renders
+  }, server = FALSE)  # Client-side for faster interaction
 
   # Dynamic table header
   output$table_header <- renderUI({
@@ -634,6 +556,26 @@ server <- function(input, output, session) {
       }
     )
   })
+
+  # ---------------------------------------------------------------------------
+  # Sync Plot Selection to Table Row Selection
+  # ---------------------------------------------------------------------------
+
+  observeEvent(selected_cars(), {
+    selected <- selected_cars()
+    data <- sidebar_filtered_data()
+
+    proxy <- dataTableProxy("data_table")
+
+    if (length(selected) > 0 && "car" %in% names(data)) {
+      # Find row indices of selected cars in the current data
+      row_indices <- which(data$car %in% selected)
+      selectRows(proxy, row_indices)
+    } else {
+      # Clear selection when no cars selected
+      selectRows(proxy, NULL)
+    }
+  }, ignoreNULL = FALSE)
 
   # ---------------------------------------------------------------------------
   # Value Boxes (based on what's visible in plot + selection)
