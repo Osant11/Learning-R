@@ -33,31 +33,67 @@ ui <- page_navbar(
 
   # JavaScript for dynamic row highlighting
   header = tags$head(
+    tags$style(HTML("
+      .selected-row-highlight {
+        background-color: #d4edda !important;
+      }
+    ")),
     tags$script(HTML("
-      // Handler to update table row highlighting based on plot selection
-      Shiny.addCustomMessageHandler('updateTableHighlight', function(message) {
-        var selectedCars = message.selectedCars;
-        var carColIndex = message.carColIndex;
+      // Store selected cars globally for use in drawCallback
+      var globalSelectedCars = [];
+      var globalCarColIndex = -1;
+
+      // Function to apply highlighting to visible rows
+      function applyHighlighting() {
+        // Try multiple selectors to find the table
+        var tableSelectors = [
+          '#data_table table tbody tr',
+          '#data_table tbody tr',
+          '.dataTable tbody tr'
+        ];
+
+        var rows = $();
+        for (var i = 0; i < tableSelectors.length; i++) {
+          rows = $(tableSelectors[i]);
+          if (rows.length > 0) break;
+        }
 
         // Remove existing highlights
-        $('#data_table tbody tr').removeClass('selected-row').css('background-color', '');
+        rows.removeClass('selected-row-highlight');
 
         // If no selection or car column not visible, return
-        if (!selectedCars || selectedCars.length === 0 || carColIndex < 0) {
+        if (!globalSelectedCars || globalSelectedCars.length === 0 || globalCarColIndex < 0) {
           return;
         }
 
         // Add highlights to selected rows
-        $('#data_table tbody tr').each(function() {
+        rows.each(function() {
           var row = $(this);
-          var carName = row.find('td').eq(carColIndex).text();
-          if (selectedCars.indexOf(carName) > -1) {
-            row.addClass('selected-row').css('background-color', '#d4edda');
+          var cells = row.find('td');
+          if (cells.length > globalCarColIndex) {
+            var carName = cells.eq(globalCarColIndex).text().trim();
+            if (globalSelectedCars.indexOf(carName) > -1) {
+              row.addClass('selected-row-highlight');
+            }
           }
         });
+      }
+
+      // Handler to update table row highlighting based on plot selection
+      Shiny.addCustomMessageHandler('updateTableHighlight', function(message) {
+        globalSelectedCars = message.selectedCars || [];
+        globalCarColIndex = message.carColIndex;
+
+        // Apply highlighting with a small delay to ensure table is rendered
+        setTimeout(applyHighlighting, 100);
       });
 
-      // Initialize handler (placeholder for any setup needed)
+      // Re-apply highlighting when table is redrawn (pagination, filtering, etc.)
+      $(document).on('draw.dt', function() {
+        setTimeout(applyHighlighting, 50);
+      });
+
+      // Initialize handler
       Shiny.addCustomMessageHandler('initTableHighlight', function(message) {
         // Initialization complete
       });
