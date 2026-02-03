@@ -542,6 +542,8 @@ server <- function(input, output, session) {
   output$data_table <- renderDT({
     data <- sidebar_filtered_data()
     cols <- table_display_columns()
+    # Include selected_cars as dependency to force re-render on selection change
+    selected <- selected_cars()
 
     if (nrow(data) == 0) {
       return(datatable(data.frame(Message = "No data matches current filters")))
@@ -561,6 +563,23 @@ server <- function(input, output, session) {
     # Find car column index for row callback (0-based for JS)
     car_col_index <- if ("car" %in% cols) which(cols == "car") - 1 else -1
 
+    # Build rowCallback for highlighting selected rows
+    row_callback <- NULL
+    if (car_col_index >= 0 && length(selected) > 0) {
+      row_callback <- JS(sprintf(
+        "function(row, data, displayNum, displayIndex, dataIndex) {
+          var selectedCars = %s;
+          var carColIndex = %d;
+          var carName = data[carColIndex];
+          if (selectedCars.indexOf(carName) > -1) {
+            $(row).css('background-color', '#d4edda');
+          }
+        }",
+        jsonlite::toJSON(selected),
+        car_col_index
+      ))
+    }
+
     # Create datatable with column filters and horizontal scroll
     dt <- datatable(
       display_df,
@@ -574,7 +593,8 @@ server <- function(input, output, session) {
         autoWidth = TRUE,
         columnDefs = list(
           list(width = '120px', targets = "_all")
-        )
+        ),
+        rowCallback = row_callback
       ),
       rownames = FALSE,
       class = 'cell-border stripe hover nowrap'
@@ -586,26 +606,7 @@ server <- function(input, output, session) {
     }
 
     dt
-  }, server = TRUE)  # Use server-side processing
-
-  # Update row highlighting when selection changes
-  observe({
-    selected <- selected_cars()
-    cols <- table_display_columns()
-    car_col_index <- if ("car" %in% cols) which(c("car", setdiff(cols, "car")) == "car") - 1 else -1
-
-    # Send selection to JavaScript to update highlighting
-    session$sendCustomMessage("updateTableHighlight", list(
-      selectedCars = selected,
-      carColIndex = car_col_index
-    ))
-  })
-
-  # Add JavaScript handler for updating table row highlighting
-  observe({
-    # Only run once to add the JS handler
-    session$sendCustomMessage("initTableHighlight", list())
-  })
+  }, server = FALSE)  # Client-side processing for faster re-renders
 
   # Dynamic table header
   output$table_header <- renderUI({
