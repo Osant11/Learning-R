@@ -449,23 +449,21 @@ server <- function(input, output, session) {
     s <- event_data("plotly_selected", source = "scatter")
     if (is.null(s)) return(character(0))
 
-    # Get car names from selection
-    data <- plot_data()
-    if (nrow(data) == 0) return(character(0))
+    # Get car names directly from customdata (set in plot)
+    # This avoids dependency on plot_data() which would cause a reactive loop
+    if ("customdata" %in% names(s) && length(s$customdata) > 0) {
+      return(as.character(s$customdata))
+    }
 
-    selected_indices <- s$pointNumber + 1
-    valid_indices <- selected_indices[selected_indices <= nrow(data)]
-
-    if (length(valid_indices) == 0) return(character(0))
-
-    data$car[valid_indices]
+    character(0)
   })
 
   selected_data <- reactive({
     cars <- selected_cars()
     if (length(cars) == 0) return(data.frame())
 
-    plot_data() %>% filter(car %in% cars)
+    # Use sidebar_filtered_data instead of plot_data to avoid reactive loops
+    sidebar_filtered_data() %>% filter(car %in% cars)
   })
 
   # ---------------------------------------------------------------------------
