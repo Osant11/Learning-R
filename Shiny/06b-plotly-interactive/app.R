@@ -118,9 +118,37 @@ ui <- page_navbar(
           card_header(
             class = "d-flex justify-content-between align-items-center",
             uiOutput("table_header"),
-            actionButton("clear_table_filters", "Clear Filters",
-                        class = "btn-sm btn-outline-secondary",
-                        icon = icon("filter-circle-xmark"))
+            div(
+              # Column selector dropdown
+              popover(
+                actionButton("col_selector_btn", "",
+                            icon = icon("table-columns"),
+                            class = "btn-sm btn-outline-primary me-1",
+                            title = "Select columns"),
+                title = "Select Columns to Display",
+                checkboxGroupInput(
+                  "table_columns",
+                  label = NULL,
+                  choices = c("Car" = "car",
+                             "MPG" = "mpg",
+                             "Cylinders" = "cyl",
+                             "Horsepower" = "hp",
+                             "Displacement" = "disp",
+                             "Rear Axle Ratio" = "drat",
+                             "Weight" = "wt",
+                             "1/4 Mile Time" = "qsec",
+                             "Engine" = "vs",
+                             "Transmission" = "am",
+                             "Gears" = "gear",
+                             "Carburetors" = "carb"),
+                  selected = c("car", "mpg", "cyl", "hp", "disp", "drat",
+                              "wt", "qsec", "vs", "am", "gear", "carb")
+                )
+              ),
+              actionButton("clear_table_filters", "Clear Filters",
+                          class = "btn-sm btn-outline-secondary",
+                          icon = icon("filter-circle-xmark"))
+            )
           ),
           card_body(
             DTOutput("data_table")
@@ -246,12 +274,6 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------------
   # Table Filtered Data (after table column filters)
   # ---------------------------------------------------------------------------
-
-  # Store the data that's currently in the table for reference
-  table_data <- reactive({
-    sidebar_filtered_data() %>%
-      select(car, mpg, cyl, hp, wt, gear, am)
-  })
 
   # Get rows that pass the table's column filters
   table_filtered_rows <- reactive({
@@ -437,45 +459,80 @@ server <- function(input, output, session) {
   # Data Table (with column filters, shows all sidebar-filtered data)
   # ---------------------------------------------------------------------------
 
+  # Get selected columns for the table
+  table_display_columns <- reactive({
+    cols <- input$table_columns
+    if (is.null(cols) || length(cols) == 0) {
+      # Default to all columns if none selected
+      c("car", "mpg", "cyl", "hp", "disp", "drat", "wt", "qsec", "vs", "am", "gear", "carb")
+    } else {
+      cols
+    }
+  })
+
   output$data_table <- renderDT({
     data <- sidebar_filtered_data()
     selected <- selected_cars()
+    cols <- table_display_columns()
 
     if (nrow(data) == 0) {
       return(datatable(data.frame(Message = "No data matches current filters")))
     }
 
-    # Prepare display data
-    display_df <- data %>%
-      select(car, mpg, cyl, hp, wt, gear, am)
+    # Ensure 'car' is always first if selected (for row matching)
+    if ("car" %in% cols) {
+      cols <- c("car", setdiff(cols, "car"))
+    }
 
-    # Create datatable with column filters
+    # Prepare display data with selected columns only
+    display_df <- data %>% select(all_of(cols))
+
+    # Determine which numeric columns to format
+    numeric_cols_to_round <- intersect(cols, c("mpg", "hp", "wt", "drat", "qsec"))
+
+    # Find car column index for row callback (0-based for JS)
+    car_col_index <- if ("car" %in% cols) which(cols == "car") - 1 else -1
+
+    # Create datatable with column filters and horizontal scroll
     dt <- datatable(
       display_df,
       filter = 'top',  # Enable column filters at top
       options = list(
         pageLength = 15,
         dom = 'tip',
+        scrollX = TRUE,  # Enable horizontal scrolling
         scrollY = "400px",
         scrollCollapse = TRUE,
+        autoWidth = TRUE,
+        columnDefs = list(
+          list(width = '120px', targets = "_all")
+        ),
         # Highlight selected rows
-        rowCallback = JS(
-          sprintf(
-            "function(row, data) {
-              var selectedCars = %s;
-              if (selectedCars.indexOf(data[0]) > -1) {
-                $(row).addClass('selected-row');
-                $(row).css('background-color', '#d4edda');
-              }
-            }",
-            jsonlite::toJSON(selected)
+        rowCallback = if (car_col_index >= 0) {
+          JS(
+            sprintf(
+              "function(row, data) {
+                var selectedCars = %s;
+                var carColIndex = %d;
+                if (selectedCars.indexOf(data[carColIndex]) > -1) {
+                  $(row).addClass('selected-row');
+                  $(row).css('background-color', '#d4edda');
+                }
+              }",
+              jsonlite::toJSON(selected),
+              car_col_index
+            )
           )
-        )
+        } else NULL
       ),
       rownames = FALSE,
-      class = 'cell-border stripe hover'
-    ) %>%
-      formatRound(columns = c('mpg', 'hp', 'wt'), digits = 1)
+      class = 'cell-border stripe hover nowrap'  # nowrap helps with horizontal scroll
+    )
+
+    # Format numeric columns if they exist
+    if (length(numeric_cols_to_round) > 0) {
+      dt <- dt %>% formatRound(columns = numeric_cols_to_round, digits = 1)
+    }
 
     dt
   })
