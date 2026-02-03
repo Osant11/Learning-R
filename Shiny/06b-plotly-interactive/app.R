@@ -7,6 +7,7 @@
 # - Modular Shiny application structure
 # - Dynamic filtering with a custom module
 # - Interactive Plotly visualizations
+# - Bidirectional filtering (table ↔ plot)
 # - Modern UI with bslib
 #
 # File Structure:
@@ -92,16 +93,17 @@ ui <- page_navbar(
           full_screen = TRUE,
           card_header(
             class = "d-flex justify-content-between align-items-center",
-            "Interactive Scatter Plot",
+            uiOutput("plot_header"),
             div(
               actionButton("reset_selection", "Reset Selection",
                           class = "btn-sm btn-outline-secondary",
                           icon = icon("rotate-left")),
               popover(
                 icon("circle-info"),
-                title = "How to select",
-                "Use click-and-drag or lasso tool to select multiple points.
-                Hold Shift to select multiple groups."
+                title = "How to use",
+                "• Use column filters in the table to filter the plot
+                • Use click-and-drag or lasso to select points
+                • Hold Shift to select multiple groups"
               )
             )
           ),
@@ -110,10 +112,16 @@ ui <- page_navbar(
           )
         ),
 
-        # Data table
+        # Data table with column filters
         card(
           full_screen = TRUE,
-          card_header(uiOutput("table_header")),
+          card_header(
+            class = "d-flex justify-content-between align-items-center",
+            uiOutput("table_header"),
+            actionButton("clear_table_filters", "Clear Filters",
+                        class = "btn-sm btn-outline-secondary",
+                        icon = icon("filter-circle-xmark"))
+          ),
           card_body(
             DTOutput("data_table")
           )
@@ -174,28 +182,25 @@ This Shiny dashboard demonstrates:
 
 - **Modular architecture** with reusable components
 - **Dynamic filtering widget** - Add/remove filters on demand
+- **Bidirectional filtering** - Table filters ↔ Plot selection
 - **Interactive selection** with Plotly
 - **Reactive tables** with DT
-- **Modern UI** with bslib
 
-#### File Structure:
+#### Filtering Interactions:
 
 ```
-06b-plotly-interactive/
-├── app.R              # Main application
-├── global.R           # Packages, theme, sources
-└── R/
-    ├── data_config.R       # Data & filter configuration
-    └── mod_filter_widget.R # Filter widget module
+Sidebar Filters → Table (with column filters) → Plot → Selection
+       ↓                    ↓                    ↓         ↓
+   Base filter      Column filters          Shows      Highlights
+                    affect plot           filtered     in table
 ```
 
 #### How to use:
 
-1. Click the **+** button in the sidebar to add filters
-2. Choose a variable and set filter values
-3. Add multiple filters - they work cumulatively
-4. Remove individual filters with the **x** button
-5. Select points on the scatter plot for detailed view
+1. Use **sidebar filters** for primary data filtering
+2. Use **table column filters** for quick refinement (affects plot)
+3. **Select points** on the plot to highlight them in the table
+4. All filters work together cumulatively
 
 #### Data:
 
@@ -227,15 +232,49 @@ server <- function(input, output, session) {
   # Filter Module
   # ---------------------------------------------------------------------------
 
-  # Get active filters from the module
+  # Get active filters from the sidebar module
   active_filters <- filterWidgetServer("filters", filter_config, filter_choices)
 
   # ---------------------------------------------------------------------------
-  # Filtered Data
+  # Sidebar Filtered Data (base data after sidebar filters)
   # ---------------------------------------------------------------------------
 
-  filtered_data <- reactive({
+  sidebar_filtered_data <- reactive({
     apply_filters(base_data, active_filters())
+  })
+
+  # ---------------------------------------------------------------------------
+  # Table Filtered Data (after table column filters)
+  # ---------------------------------------------------------------------------
+
+  # Store the data that's currently in the table for reference
+  table_data <- reactive({
+    sidebar_filtered_data() %>%
+      select(car, mpg, cyl, hp, wt, gear, am)
+  })
+
+  # Get rows that pass the table's column filters
+  table_filtered_rows <- reactive({
+    rows <- input$data_table_rows_all
+    if (is.null(rows)) {
+      # No filtering yet, return all rows
+      seq_len(nrow(sidebar_filtered_data()))
+    } else {
+      rows
+    }
+  })
+
+  # Data to show in the plot (respects table column filters)
+  plot_data <- reactive({
+    data <- sidebar_filtered_data()
+    rows <- table_filtered_rows()
+
+    if (length(rows) == 0 || nrow(data) == 0) {
+      return(data.frame())
+    }
+
+    # Return only rows that pass table filters
+    data[rows, ]
   })
 
   # ---------------------------------------------------------------------------
@@ -243,7 +282,25 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------------
 
   output$active_filters_display <- renderUI({
-    renderFilterBadges(active_filters())
+    # Count table column filters active
+    total_rows <- nrow(sidebar_filtered_data())
+    filtered_rows <- length(table_filtered_rows())
+    table_filter_active <- filtered_rows < total_rows
+
+    sidebar_badges <- renderFilterBadges(active_filters())
+
+    if (table_filter_active) {
+      tagList(
+        sidebar_badges,
+        tags$span(
+          class = "badge bg-warning ms-2",
+          icon("table-columns", class = "me-1"),
+          paste0("Table filter: ", filtered_rows, "/", total_rows, " rows")
+        )
+      )
+    } else {
+      sidebar_badges
+    }
   })
 
   # ---------------------------------------------------------------------------
@@ -256,15 +313,22 @@ server <- function(input, output, session) {
     reset_trigger(reset_trigger() + 1)
   })
 
+  # Clear table column filters by reloading data
+  observeEvent(input$clear_table_filters, {
+    # Force table to re-render without filters
+    # This is done by triggering a proxy reload
+    dataTableProxy("data_table") %>% clearSearch()
+  })
+
   # ---------------------------------------------------------------------------
-  # Scatter Plot
+  # Scatter Plot (uses table-filtered data)
   # ---------------------------------------------------------------------------
 
   output$scatter_plot <- renderPlotly({
     # Trigger reset when button clicked
     reset_trigger()
 
-    data <- filtered_data()
+    data <- plot_data()
 
     # Handle empty data
     if (nrow(data) == 0) {
@@ -298,7 +362,8 @@ server <- function(input, output, session) {
         "Weight: ", wt
       ),
       hoverinfo = 'text',
-      source = "scatter"
+      source = "scatter",
+      customdata = ~car  # Store car name for matching with table
     ) %>%
       layout(
         dragmode = input$select_mode,
@@ -329,112 +394,156 @@ server <- function(input, output, session) {
     p
   })
 
+  # Plot header showing count
+  output$plot_header <- renderUI({
+    n <- nrow(plot_data())
+    div(
+      "Interactive Scatter Plot",
+      tags$span(
+        class = "badge bg-secondary ms-2",
+        paste(n, "points")
+      )
+    )
+  })
+
   # ---------------------------------------------------------------------------
   # Selected Data from Plot
   # ---------------------------------------------------------------------------
 
-  selected_data <- reactive({
+  selected_cars <- reactive({
     s <- event_data("plotly_selected", source = "scatter")
-    data <- filtered_data()
+    if (is.null(s)) return(character(0))
 
-    if (is.null(s) || nrow(data) == 0) return(data.frame())
+    # Get car names from selection
+    data <- plot_data()
+    if (nrow(data) == 0) return(character(0))
 
     selected_indices <- s$pointNumber + 1
     valid_indices <- selected_indices[selected_indices <= nrow(data)]
 
-    if (length(valid_indices) == 0) return(data.frame())
+    if (length(valid_indices) == 0) return(character(0))
 
-    data[valid_indices, ]
+    data$car[valid_indices]
+  })
+
+  selected_data <- reactive({
+    cars <- selected_cars()
+    if (length(cars) == 0) return(data.frame())
+
+    plot_data() %>% filter(car %in% cars)
   })
 
   # ---------------------------------------------------------------------------
-  # Data Table
+  # Data Table (with column filters, shows all sidebar-filtered data)
   # ---------------------------------------------------------------------------
 
   output$data_table <- renderDT({
-    selected <- selected_data()
-    all_data <- filtered_data()
+    data <- sidebar_filtered_data()
+    selected <- selected_cars()
 
-    # Use selected data if available, otherwise show all filtered data
-    if (nrow(selected) > 0) {
-      df <- selected
-    } else {
-      df <- all_data
+    if (nrow(data) == 0) {
+      return(datatable(data.frame(Message = "No data matches current filters")))
     }
 
-    if (nrow(df) == 0) {
-      return(data.frame(Message = "No data matches current filters"))
-    }
+    # Prepare display data
+    display_df <- data %>%
+      select(car, mpg, cyl, hp, wt, gear, am)
 
-    datatable(
-      df %>% select(car, mpg, cyl, hp, wt, gear, am),
+    # Create datatable with column filters
+    dt <- datatable(
+      display_df,
+      filter = 'top',  # Enable column filters at top
       options = list(
-        pageLength = 10,
+        pageLength = 15,
         dom = 'tip',
         scrollY = "400px",
-        scrollCollapse = TRUE
+        scrollCollapse = TRUE,
+        # Highlight selected rows
+        rowCallback = JS(
+          sprintf(
+            "function(row, data) {
+              var selectedCars = %s;
+              if (selectedCars.indexOf(data[0]) > -1) {
+                $(row).addClass('selected-row');
+                $(row).css('background-color', '#d4edda');
+              }
+            }",
+            jsonlite::toJSON(selected)
+          )
+        )
       ),
       rownames = FALSE,
       class = 'cell-border stripe hover'
     ) %>%
       formatRound(columns = c('mpg', 'hp', 'wt'), digits = 1)
+
+    dt
   })
 
   # Dynamic table header
   output$table_header <- renderUI({
-    selected <- selected_data()
-    all_data <- filtered_data()
+    total <- nrow(sidebar_filtered_data())
+    filtered <- length(table_filtered_rows())
+    selected_n <- length(selected_cars())
 
-    if (nrow(selected) > 0) {
-      div(
-        icon("hand-pointer", class = "text-success me-2"),
-        paste0("Selected Data (", nrow(selected), " rows)")
-      )
-    } else {
-      div(
-        icon("table", class = "text-primary me-2"),
-        paste0("All Data (", nrow(all_data), " rows)")
-      )
-    }
+    filter_active <- filtered < total
+
+    div(
+      icon("table", class = "text-primary me-2"),
+      paste0("Data Table (", filtered, "/", total, " rows)"),
+      if (selected_n > 0) {
+        tags$span(
+          class = "badge bg-success ms-2",
+          paste(selected_n, "selected")
+        )
+      },
+      if (filter_active) {
+        tags$span(
+          class = "badge bg-warning ms-2",
+          icon("filter"),
+          " filtered"
+        )
+      }
+    )
   })
 
   # ---------------------------------------------------------------------------
-  # Value Boxes
+  # Value Boxes (based on what's visible in plot + selection)
   # ---------------------------------------------------------------------------
 
   output$total_cars <- renderText({
-    paste0(nrow(filtered_data()), " / ", nrow(base_data))
+    paste0(nrow(plot_data()), " / ", nrow(base_data))
   })
 
   output$selected_count <- renderText({
-    df <- selected_data()
-    if (nrow(df) == 0) return("0")
-    nrow(df)
+    n <- length(selected_cars())
+    if (n == 0) return("0")
+    n
   })
 
   output$avg_mpg <- renderText({
-    df <- selected_data()
-    data <- filtered_data()
+    selected <- selected_data()
+    data <- plot_data()
 
     if (nrow(data) == 0) return("N/A")
 
-    if (nrow(df) == 0) {
+    if (nrow(selected) == 0) {
       sprintf("%.1f", mean(data$mpg))
     } else {
-      sprintf("%.1f", mean(df$mpg))
+      sprintf("%.1f", mean(selected$mpg))
     }
   })
 
   output$avg_hp <- renderText({
-    df <- selected_data()
-    data <- filtered_data()
+    selected <- selected_data()
+    data <- plot_data()
 
     if (nrow(data) == 0) return("N/A")
 
-    if (nrow(df) == 0) {
+    if (nrow(selected) == 0) {
       sprintf("%.0f", mean(data$hp))
     } else {
-      sprintf("%.0f", mean(df$hp))
+      sprintf("%.0f", mean(selected$hp))
     }
   })
 
@@ -443,18 +552,18 @@ server <- function(input, output, session) {
   # ---------------------------------------------------------------------------
 
   output$summary_stats <- renderPrint({
-    df <- selected_data()
-    data <- filtered_data()
+    selected <- selected_data()
+    data <- plot_data()
 
     if (nrow(data) == 0) {
       cat("No data matches current filters\n")
       return()
     }
 
-    if (nrow(df) == 0) {
-      cat("Filtered Data Summary\n")
+    if (nrow(selected) == 0) {
+      cat("Visible Data Summary\n")
       cat("====================\n\n")
-      cat("Total cars (filtered):", nrow(data), "/", nrow(base_data), "\n\n")
+      cat("Total cars (after all filters):", nrow(data), "\n\n")
 
       cat("MPG Statistics:\n")
       cat("  Min:", min(data$mpg), "\n")
@@ -469,26 +578,26 @@ server <- function(input, output, session) {
       cat("Distribution by Cylinders:\n")
       print(table(data$cyl))
 
-      cat("\nSelect points on the chart for detailed selection stats")
+      cat("\nTip: Select points on the chart or filter the table columns")
       return()
     }
 
     cat("Selected Cars Summary\n")
     cat("====================\n\n")
-    cat("Number of cars:", nrow(df), "/", nrow(data), "(filtered)\n\n")
+    cat("Number of cars:", nrow(selected), "/", nrow(data), "\n\n")
 
     cat("MPG Statistics:\n")
-    cat("  Min:", min(df$mpg), "\n")
-    cat("  Mean:", round(mean(df$mpg), 2), "\n")
-    cat("  Max:", max(df$mpg), "\n\n")
+    cat("  Min:", min(selected$mpg), "\n")
+    cat("  Mean:", round(mean(selected$mpg), 2), "\n")
+    cat("  Max:", max(selected$mpg), "\n\n")
 
     cat("Horsepower Statistics:\n")
-    cat("  Min:", min(df$hp), "\n")
-    cat("  Mean:", round(mean(df$hp), 2), "\n")
-    cat("  Max:", max(df$hp), "\n\n")
+    cat("  Min:", min(selected$hp), "\n")
+    cat("  Mean:", round(mean(selected$hp), 2), "\n")
+    cat("  Max:", max(selected$hp), "\n\n")
 
     cat("Distribution by Cylinders:\n")
-    print(table(df$cyl))
+    print(table(selected$cyl))
   })
 }
 

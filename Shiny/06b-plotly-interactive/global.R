@@ -8,6 +8,7 @@ library(bslib)
 library(plotly)
 library(DT)
 library(dplyr)
+library(jsonlite)  # For JSON conversion in JS callbacks
 
 # -----------------------------------------------------------------------------
 # Theme Configuration
