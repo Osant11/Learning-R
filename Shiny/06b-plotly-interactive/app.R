@@ -486,9 +486,15 @@ server <- function(input, output, session) {
   output$data_table <- renderDT({
     data <- sidebar_filtered_data()
     cols <- table_display_columns()
+    selected <- selected_cars()
 
     if (nrow(data) == 0) {
       return(datatable(data.frame(Message = "No data matches current filters")))
+    }
+
+    # If there's a plot selection, show only selected rows
+    if (length(selected) > 0 && "car" %in% names(data)) {
+      data <- data %>% filter(car %in% selected)
     }
 
     # Ensure 'car' is always first if selected (for row matching)
@@ -502,11 +508,10 @@ server <- function(input, output, session) {
     # Determine which numeric columns to format
     numeric_cols_to_round <- intersect(cols, c("mpg", "hp", "wt", "drat", "qsec"))
 
-    # Create datatable with column filters, horizontal scroll, and row selection
+    # Create datatable with column filters, horizontal scroll
     dt <- datatable(
       display_df,
       filter = 'top',  # Enable column filters at top
-      selection = 'multiple',  # Enable multiple row selection for highlighting
       options = list(
         pageLength = 15,
         dom = 'tip',
@@ -528,7 +533,7 @@ server <- function(input, output, session) {
     }
 
     dt
-  }, server = FALSE)  # Client-side for faster interaction
+  })
 
   # Dynamic table header
   output$table_header <- renderUI({
@@ -538,16 +543,24 @@ server <- function(input, output, session) {
 
     filter_active <- filtered < total
 
+    # Determine what the table is showing
+    if (selected_n > 0) {
+      title_text <- paste0("Selected Data (", selected_n, " of ", total, " rows)")
+    } else {
+      title_text <- paste0("Data Table (", filtered, "/", total, " rows)")
+    }
+
     div(
       icon("table", class = "text-primary me-2"),
-      paste0("Data Table (", filtered, "/", total, " rows)"),
+      title_text,
       if (selected_n > 0) {
         tags$span(
           class = "badge bg-success ms-2",
-          paste(selected_n, "selected")
+          icon("check"),
+          " from plot"
         )
       },
-      if (filter_active) {
+      if (filter_active && selected_n == 0) {
         tags$span(
           class = "badge bg-warning ms-2",
           icon("filter"),
@@ -556,26 +569,6 @@ server <- function(input, output, session) {
       }
     )
   })
-
-  # ---------------------------------------------------------------------------
-  # Sync Plot Selection to Table Row Selection
-  # ---------------------------------------------------------------------------
-
-  observeEvent(selected_cars(), {
-    selected <- selected_cars()
-    data <- sidebar_filtered_data()
-
-    proxy <- dataTableProxy("data_table")
-
-    if (length(selected) > 0 && "car" %in% names(data)) {
-      # Find row indices of selected cars in the current data
-      row_indices <- which(data$car %in% selected)
-      selectRows(proxy, row_indices)
-    } else {
-      # Clear selection when no cars selected
-      selectRows(proxy, NULL)
-    }
-  }, ignoreNULL = FALSE)
 
   # ---------------------------------------------------------------------------
   # Value Boxes (based on what's visible in plot + selection)
